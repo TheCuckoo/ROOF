@@ -506,7 +506,6 @@
      D  @Element_                     1A
       * 
      D x               S              3I 0
-     D Host            S               *
       * 
       /free
 
@@ -620,7 +619,7 @@
      D  ErrorCode                     8A
       * 
      D @RplDta         S               *
-     D RplDta          S              1A   BASED(@Info)
+     D RplDta          S              1A   BASED(@RplDta)
       * 
      D RtvInfoSize     S             10I 0
      D @RtvInfo        S               *
@@ -643,18 +642,18 @@
 
          // Pick up outstanding message, if any
             QooRcvPgmMsg(Info:Size:
-              'RCVM0300':'*':1:'*ESCAPE':'    ':0:'*SAME':QooErrorNull)     ;
+              'RCVM0300':'*':1:'*ESCAPE':'    ':0:'*SAME':QooErrorNull) ;
 
-         // Compare message against parameters to see if they match
-            EXSR CompareMessage ;
+         // Compare message ID against parameters to see if they match
+            EXSR CompareMessageId ;
 
          // Make sure there is enough room for everything we want
-            Size= %Size(Info)+Info.DataAvl+Info.MsgAvl ;
+            Size= %Size(Info)+Info.BytesAvl+Info.MsgAvl ;
             @Info= Utility_AllocateAuto(Size) ;
 
          // Fetch all available data
             QooRcvPgmMsg(Info:Size:
-              'RCVM0300':'*':1:'*ESCAPE':'    ':0:'*SAME':QooErrorNull)     ;
+              'RCVM0300':'*':1:'*ESCAPE':'    ':0:'*SAME':QooErrorNull) ;
 
          // Point at replacement data
             @RplDta= @Info+%Size(Info) ;
@@ -680,6 +679,9 @@
          // Point at message text
             @MessageText= @RtvInfo+%Size(RtvInfo) ;
 
+         // Compare message text against parameters to see if they match
+            EXSR CompareMessageText ;
+
          // Receive message and mark it as handled
             QooRcvPgmMsg(Info:Size:
               'RCVM0300':'*':1:'*ESCAPE':'    ':0:
@@ -700,26 +702,34 @@
             RETURN true ;
 
          // ----------------------------------------------------------------------------------------
-         // Compare Message to see if it matches
+         // Compare Message ID to see if it matches
          // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
-            BEGSR CompareMessage ;
+            BEGSR CompareMessageID ;
 
-            // Match Message Id value
-               SELECT ;
+         // Match Message Id value
+            SELECT ;
 
-            // Accept all if no message parameter supplied
-               WHEN (%Parms() = 0) ;
+         // Accept all if no message parameter supplied
+            WHEN (%Parms() = 0) ;
 
-            // Also accept special value *ALL or blanks
-               WHEN (oMsgId = '*ALL') OR (oMsgId = '') ;
+         // Also accept special value *ALL or blanks
+            WHEN (oMsgId = '*ALL') OR (oMsgId = '') ;
 
-            // Match against supplied length
-               WHEN (%SubSt(Info.Id:1:%Len(oMsgId)) = oMsgId) ;
+         // Match against supplied length
+            WHEN (%SubSt(Info.Id:1:%Len(oMsgId)) = oMsgId) ;
 
-            // Doesnt match, so do not handle it
-               OTHER ;
-                  RETURN false ;
-               ENDSL ;
+         // Doesnt match, so do not handle it
+            OTHER ;
+               RETURN false ;
+            ENDSL ;
+
+         // Finished
+            ENDSR ;
+
+         // ----------------------------------------------------------------------------------------
+         // Compare Message Text to see if it matches
+         // - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+            BEGSR CompareMessageText ;
 
             // Match Message Data value
                SELECT ;
@@ -731,7 +741,7 @@
                WHEN (oMsgDta = '') ;
 
             // Match against supplied length
-               WHEN (%SubSt(Info.Id:1:%Len(oMsgDta)) = oMsgDta) ;
+               WHEN (%SubSt(MessageText:1:%Len(oMsgDta)) = oMsgDta) ;
 
             // Doesnt match, so do not handle it
                OTHER ;
@@ -1077,25 +1087,13 @@
      P                 B
      D                 PI            16A
       * 
-     D GenPRN...
-     D                 PR                  EXTPROC('Qc3GenPRNs')
-     D  @Data                          *   VALUE
-     D  DataLen                      10I 0 CONST
-     D  Type                          1A   CONST
-     D  Parity                        1A   CONST
-     D  ErrorCode                     8A   OPTIONS(*VARSIZE)
-      * 
-     D ErrorCode       DS
-     D  BytesProv                    10I 0 INZ(0)
-     D  BytesAvail                   10I 0 INZ(0)
-      * 
      D Signature       S             16A
       * 
       /free
 
          // Generate random bit stream
-            GenPRN(%Addr(Signature):%Size(Signature):
-              '0':'0':ErrorCode) ;
+            Utility_RandomBitStream(
+              %Addr(Signature):%Size(Signature)) ;
 
          // Finished
             RETURN Signature ;
@@ -1124,7 +1122,7 @@
      D  Byte7                  7      7A
      D  Byte8                  8      8A
       * 
-     D  Hex                    1     16A
+     D  Hex                    5      8A
       * 
      D  High                   1      4I 0
      D  c                      5      8I 0
@@ -1162,7 +1160,7 @@
                Utility_MemCpy(%Addr(Input.Byte1):@Data:Length) ;
                Utility_CombineHash(Result:%Addr(Input.High):4) ;
             OTHER ;
-               Input.Hex= Utility_MD5Hash(@Data:Length) ;
+               EVALR Input.Hex= Utility_MD5Hash(@Data:Length) ;
             ENDSL ;
 
          // Multiply up by 37 and truncate result
@@ -1435,10 +1433,10 @@
             x= x-1 ;
             x= %BitOR(x:%Int(x/2)) ;
             x= %BitOR(x:%Int(x/4)) ;
-            x= %BitOR(x:%Int(x/8)) ;
             x= %BitOR(x:%Int(x/16)) ;
-            x= %BitOR(x:%Int(x/32)) ;
-            x= %BitOR(x:%Int(x/64)) ;
+            x= %BitOR(x:%Int(x/256)) ;
+            x= %BitOR(x:%Int(x/65535)) ;
+            x= %BitOR(x:%Int(x/42949672962)) ;
             x+= 1 ;
 
          // Finished
