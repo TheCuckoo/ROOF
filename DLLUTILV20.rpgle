@@ -1435,7 +1435,7 @@
             x= %BitOR(x:%Int(x/4)) ;
             x= %BitOR(x:%Int(x/16)) ;
             x= %BitOR(x:%Int(x/256)) ;
-            x= %BitOR(x:%Int(x/65535)) ;
+            x= %BitOR(x:%Int(x/65536)) ;
             x= %BitOR(x:%Int(x/42949672962)) ;
             x+= 1 ;
 
